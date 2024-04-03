@@ -51,7 +51,7 @@ class SIFTFeatureMatchingTransformer(VideoTransformerBase):
         return av.VideoFrame.from_ndarray(processed_frame, format="bgr24")
 
 def main():
-    st.title("Live Video Stream with SIFT Feature Matching")
+    st.title("Live Video Stream with SIFT Feature Matching by Balachander")
 
     # Set client settings for WebRTC
     client_settings = ClientSettings(
