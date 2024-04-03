@@ -1,71 +1,70 @@
 import streamlit as st
+from streamlit_webrtc import webrtc_streamer, VideoTransformerBase, ClientSettings
 import cv2
 import numpy as np
-import time
+import av
 
-def sift_feature_matching(img1, img2):
-    # Convert images to grayscale
-    gray1 = cv2.cvtColor(img1, cv2.COLOR_BGR2GRAY)
-    gray2 = cv2.cvtColor(img2, cv2.COLOR_BGR2GRAY)
+class SIFTFeatureMatchingTransformer(VideoTransformerBase):
+    def __init__(self):
+        self.prev_frame = None
 
-    # SIFT feature extraction
-    sift = cv2.SIFT_create()
-    keypoints_1, descriptors_1 = sift.detectAndCompute(gray1, None)
-    keypoints_2, descriptors_2 = sift.detectAndCompute(gray2, None)
+    def sift_feature_matching(self, img1, img2):
+        # Convert images to grayscale
+        gray1 = cv2.cvtColor(img1, cv2.COLOR_BGR2GRAY)
+        gray2 = cv2.cvtColor(img2, cv2.COLOR_BGR2GRAY)
 
-    # BFMatcher with default params
-    bf = cv2.BFMatcher()
-    matches = bf.knnMatch(descriptors_1, descriptors_2, k=2)
+        # SIFT feature extraction
+        sift = cv2.SIFT_create()
+        keypoints_1, descriptors_1 = sift.detectAndCompute(gray1, None)
+        keypoints_2, descriptors_2 = sift.detectAndCompute(gray2, None)
 
-    # Apply ratio test
-    good_matches = []
-    for m, n in matches:
-        if m.distance < 0.75 * n.distance:
-            good_matches.append(m)
+        # BFMatcher with default params
+        bf = cv2.BFMatcher()
+        matches = bf.knnMatch(descriptors_1, descriptors_2, k=2)
 
-    # Draw matches
-    img3 = cv2.drawMatches(img1, keypoints_1, img2, keypoints_2, good_matches, None, flags=cv2.DrawMatchesFlags_NOT_DRAW_SINGLE_POINTS)
-    return img3
+        # Apply ratio test
+        good_matches = []
+        for m, n in matches:
+            if m.distance < 0.75 * n.distance:
+                good_matches.append(m)
 
-def main():
-    st.title("Live Video Stream with SIFT Feature Matching by Balachander")
+        # Draw matches
+        img3 = cv2.drawMatches(img1, keypoints_1, img2, keypoints_2, good_matches, None, flags=cv2.DrawMatchesFlags_NOT_DRAW_SINGLE_POINTS)
+        return img3
 
-    cap = cv2.VideoCapture(0)
+    def recv(self, frame):
+        if frame is None:
+            return
 
-    # Check if camera opened successfully
-    if not cap.isOpened():
-        st.error("Error: Unable to open camera.")
-        return
-
-    # Initialize variables
-    prev_frame = None
-    processed_frame = None
-
-    # Main loop
-    while True:
-        # Read frame from camera
-        ret, frame = cap.read()
-        if not ret:
-            st.error("Failed to capture frame from camera")
-            break
+        # Convert frame to numpy array
+        frame = frame.to_ndarray(format="bgr24")
 
         # Perform SIFT feature matching if there's a previous frame
-        if prev_frame is not None:
-            processed_frame = sift_feature_matching(prev_frame, frame)
+        if self.prev_frame is not None:
+            processed_frame = self.sift_feature_matching(self.prev_frame, frame)
         else:
             processed_frame = frame
 
-        # Display processed frame with SIFT feature matching
-        st.image(processed_frame, channels="BGR", use_column_width=True, caption='SIFT Feature Matching')
-
         # Update previous frame
-        prev_frame = frame.copy()
+        self.prev_frame = frame.copy()
 
-        # Wait for a short duration
-        time.sleep(0.1)
+        return av.VideoFrame.from_ndarray(processed_frame, format="bgr24")
 
-    # Release video capture
-    cap.release()
+def main():
+    st.title("Live Video Stream with SIFT Feature Matching")
+
+    # Set client settings for WebRTC
+    client_settings = ClientSettings(
+        rtc_configuration={"iceServers": [{"urls": ["stun:stun.l.google.com:19302"]}]},
+        media_stream_constraints={"video": True, "audio": False},
+    )
+
+    # Render the video stream with SIFT feature matching
+    webrtc_streamer(
+        key="example",
+        video_transformer_factory=SIFTFeatureMatchingTransformer,
+        client_settings=client_settings,
+    )
 
 if __name__ == "__main__":
     main()
